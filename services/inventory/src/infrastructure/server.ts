@@ -17,7 +17,7 @@ async function main() {
 
   await consumer.start();
 
-  logger.info('Inventory Service listening for events...');
+  logger.info('Inventory Service listening for payment.processed events...');
 
   process.on('SIGINT', async () => {
     logger.info('Shutting down...');

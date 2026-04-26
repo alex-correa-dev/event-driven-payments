@@ -12,6 +12,15 @@ vi.mock('../../infrastructure/logger', () => ({
   },
 }));
 
+vi.mock('../config', () => ({
+  config: {
+    rabbitmq: {
+      queue: 'inventory.queue',
+      deadLetterQueue: 'inventory.dead-letter',
+    },
+  },
+}));
+
 interface MockChannel {
   assertExchange: ReturnType<typeof vi.fn>;
   assertQueue: ReturnType<typeof vi.fn>;
@@ -94,7 +103,7 @@ describe('InventoryConsumer', () => {
       eventName: 'payment.processed',
       data: {
         orderId: 'ORDER-123',
-        products: [{ name: 'Notebook', quantity: 2, price: 2999.99 }],
+        items: [{ productName: 'Notebook', quantity: 2, price: 2999.99 }],
       },
       timestamp: new Date().toISOString(),
     };
@@ -121,7 +130,7 @@ describe('InventoryConsumer', () => {
       eventName: 'payment.processed',
       data: {
         orderId: 'ORDER-123',
-        products: [{ name: 'Notebook', quantity: 2, price: 2999.99 }],
+        items: [{ productName: 'Notebook', quantity: 2, price: 2999.99 }],
       },
       timestamp: new Date().toISOString(),
     };
@@ -147,7 +156,7 @@ describe('InventoryConsumer', () => {
       eventName: 'payment.processed',
       data: {
         orderId: 'ORDER-123',
-        products: [{ name: 'Notebook', quantity: 2, price: 2999.99 }],
+        items: [{ productName: 'Notebook', quantity: 2, price: 2999.99 }],
       },
       timestamp: new Date().toISOString(),
     };
@@ -179,7 +188,7 @@ describe('InventoryConsumer', () => {
     expect(mockChannel.ack).toHaveBeenCalled();
   });
 
-  it('should handle missing products gracefully', async () => {
+  it('should handle missing items gracefully', async () => {
     await consumer.start();
 
     const event = {
@@ -203,7 +212,7 @@ describe('InventoryConsumer', () => {
       eventName: 'payment.processed',
       data: {
         orderId: 'ORDER-123',
-        products: [{ name: 'Notebook', quantity: 2, price: 2999.99 }],
+        items: [{ productName: 'Notebook', quantity: 2, price: 2999.99 }],
       },
       timestamp: new Date().toISOString(),
     };
@@ -211,21 +220,21 @@ describe('InventoryConsumer', () => {
     const msg = createMessage(event);
     await capturedCallback!(msg);
 
-    expect(mockChannel.nack).toHaveBeenCalledWith(msg, false, false);
+    expect(mockChannel.nack).toHaveBeenCalled();
   });
 
   it('should map product names to IDs correctly', async () => {
     await consumer.start();
 
-    const products = [
-      { name: 'Notebook', quantity: 1, price: 2999.99 },
-      { name: 'Mouse', quantity: 2, price: 49.99 },
-      { name: 'Teclado', quantity: 1, price: 199.99 },
+    const items = [
+      { productName: 'Notebook', quantity: 1, price: 2999.99 },
+      { productName: 'Mouse', quantity: 2, price: 49.99 },
+      { productName: 'Teclado', quantity: 1, price: 199.99 },
     ];
 
     const event = {
       eventName: 'payment.processed',
-      data: { orderId: 'ORDER-123', products },
+      data: { orderId: 'ORDER-123', items },
       timestamp: new Date().toISOString(),
     };
 

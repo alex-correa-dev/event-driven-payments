@@ -6,13 +6,16 @@ import { logger } from '../../infrastructure/logger';
 interface PaymentProcessedData {
   paymentId: string;
   orderId: string;
-  status: 'COMPLETED' | 'FAILED';
+  transactionId: string;
+  paymentMethod: string;
+  amount: number;
 }
 
 interface PaymentFailedData {
   paymentId: string;
   orderId: string;
   error: string;
+  amount: number;
 }
 
 export class ProcessPaymentUseCase {
@@ -37,46 +40,62 @@ export class ProcessPaymentUseCase {
       await this.paymentRepository.save(payment);
       logger.debug({ paymentId, status: payment.status }, 'Payment status updated to PROCESSING');
 
-      // Mock with a 50% chance of success/error
-      const success = Math.random() < 0.5;
+      const result = await this.paymentGateway.charge(payment.orderId, payment.amount);
 
-      if (success) {
-        logger.debug(
-          { paymentId, orderId: payment.orderId, amount: payment.amount },
-          'Calling payment gateway'
-        );
-        await this.paymentGateway.charge(payment.orderId, payment.amount);
+      if (!result || !result.transactionId) {
+        throw new Error('Payment gateway returned invalid response');
+      }
 
-        payment.complete();
-        await this.paymentRepository.save(payment);
+      payment.complete();
+      await this.paymentRepository.save(payment);
 
-        logger.info(
-          { paymentId, orderId: payment.orderId, amount: payment.amount },
-          'Payment completed successfully'
-        );
-
-        const eventData: PaymentProcessedData = {
-          paymentId: payment.id,
+      logger.info(
+        {
+          paymentId,
           orderId: payment.orderId,
-          status: 'COMPLETED',
-        };
-        await this.eventPublisher.publish('payment.processed', eventData);
-      } else {
-        logger.warn({ paymentId, orderId: payment.orderId }, 'Simulating payment failure');
+          amount: payment.amount,
+          transactionId: result.transactionId,
+          paymentMethod: result.method.type,
+        },
+        'Payment completed successfully'
+      );
+
+      const eventData: PaymentProcessedData = {
+        paymentId: payment.id,
+        orderId: payment.orderId,
+        transactionId: result.transactionId,
+        paymentMethod: result.method.type,
+        amount: payment.amount,
+      };
+      await this.eventPublisher.publish('payment.processed', eventData);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Payment processing failed';
+
+      logger.error(
+        {
+          paymentId,
+          orderId: payment.orderId,
+          error: errorMessage,
+          stack: error instanceof Error ? error.stack : undefined,
+        },
+        'Payment failed'
+      );
+
+      try {
         payment.fail();
         await this.paymentRepository.save(payment);
-
-        logger.error({ paymentId, orderId: payment.orderId }, 'Payment failed');
-
-        const eventData: PaymentFailedData = {
-          paymentId: payment.id,
-          orderId: payment.orderId,
-          error: 'Payment processing failed',
-        };
-        await this.eventPublisher.publish('payment.failed', eventData);
+      } catch (saveError) {
+        logger.error({ paymentId, error: saveError }, 'Failed to update payment status to FAILED');
       }
-    } catch (error) {
-      logger.error({ paymentId, error }, 'Error processing payment');
+
+      const eventData: PaymentFailedData = {
+        paymentId: payment.id,
+        orderId: payment.orderId,
+        error: errorMessage,
+        amount: payment.amount,
+      };
+      await this.eventPublisher.publish('payment.failed', eventData);
+
       throw error;
     }
   }

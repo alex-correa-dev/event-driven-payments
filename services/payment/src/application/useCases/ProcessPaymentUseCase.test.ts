@@ -3,7 +3,7 @@ import { ProcessPaymentUseCase } from './ProcessPaymentUseCase';
 import { Payment } from '../../domain/entities/Payment';
 import type { PaymentRepository } from '../../domain/repositories/PaymentRepository';
 import type { EventPublisher } from '../../domain/interfaces/EventPublisher';
-import type { PaymentGateway } from '../../domain/interfaces/PaymentGateway';
+import type { PaymentGateway, PaymentResult } from '../../domain/interfaces/PaymentGateway';
 
 vi.mock('../../infrastructure/logger', () => ({
   logger: {
@@ -21,6 +21,12 @@ describe('ProcessPaymentUseCase', () => {
   let mockEventPublisher: EventPublisher;
   let testPayment: Payment;
 
+  const mockPaymentResult: PaymentResult = {
+    transactionId: 'TXN-123-456',
+    status: 'AUTHORIZED',
+    method: { type: 'CREDIT_CARD', lastDigits: '1234', cardBrand: 'VISA' },
+  };
+
   beforeEach(() => {
     testPayment = new Payment({
       orderId: 'TEST-ORDER-123',
@@ -35,7 +41,7 @@ describe('ProcessPaymentUseCase', () => {
     };
 
     mockPaymentGateway = {
-      charge: vi.fn().mockResolvedValue(undefined),
+      charge: vi.fn().mockResolvedValue(mockPaymentResult),
     };
 
     mockEventPublisher = {
@@ -49,9 +55,7 @@ describe('ProcessPaymentUseCase', () => {
     );
   });
 
-  it('should process payment successfully when random success', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.3);
-
+  it('should process payment successfully', async () => {
     await processPaymentUseCase.execute(testPayment.id);
 
     expect(mockPaymentGateway.charge).toHaveBeenCalledWith(testPayment.orderId, testPayment.amount);
@@ -60,23 +64,9 @@ describe('ProcessPaymentUseCase', () => {
       expect.objectContaining({
         paymentId: testPayment.id,
         orderId: testPayment.orderId,
-        status: 'COMPLETED',
-      })
-    );
-  });
-
-  it('should fail payment when random fails', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.7);
-
-    await processPaymentUseCase.execute(testPayment.id);
-
-    expect(mockPaymentGateway.charge).not.toHaveBeenCalled();
-    expect(mockEventPublisher.publish).toHaveBeenCalledWith(
-      'payment.failed',
-      expect.objectContaining({
-        paymentId: testPayment.id,
-        orderId: testPayment.orderId,
-        error: 'Payment processing failed',
+        transactionId: mockPaymentResult.transactionId,
+        paymentMethod: mockPaymentResult.method.type,
+        amount: testPayment.amount,
       })
     );
   });
@@ -90,8 +80,6 @@ describe('ProcessPaymentUseCase', () => {
   });
 
   it('should call payment.process which changes status to PROCESSING', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.3);
-
     const processSpy = vi.spyOn(testPayment, 'process');
 
     await processPaymentUseCase.execute(testPayment.id);
@@ -99,9 +87,7 @@ describe('ProcessPaymentUseCase', () => {
     expect(processSpy).toHaveBeenCalled();
   });
 
-  it('should save payment at least once during process', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.3);
-
+  it('should save payment during process', async () => {
     await processPaymentUseCase.execute(testPayment.id);
 
     expect(mockPaymentRepository.save).toHaveBeenCalled();
@@ -109,26 +95,49 @@ describe('ProcessPaymentUseCase', () => {
   });
 
   it('should update payment status to COMPLETED on success', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.3);
-
     await processPaymentUseCase.execute(testPayment.id);
 
     expect(testPayment.status).toBe('COMPLETED');
   });
 
-  it('should update payment status to FAILED on failure', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.7);
-
-    await processPaymentUseCase.execute(testPayment.id);
-
-    expect(testPayment.status).toBe('FAILED');
-  });
-
   it('should handle gateway errors gracefully', async () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.3);
     const gatewayError = new Error('Gateway timeout');
     mockPaymentGateway.charge = vi.fn().mockRejectedValue(gatewayError);
 
     await expect(processPaymentUseCase.execute(testPayment.id)).rejects.toThrow('Gateway timeout');
+  });
+
+  it('should publish payment.failed event on error', async () => {
+    const gatewayError = new Error('Gateway timeout');
+    mockPaymentGateway.charge = vi.fn().mockRejectedValue(gatewayError);
+
+    try {
+      await processPaymentUseCase.execute(testPayment.id);
+    } catch (error) {
+      // Expected
+    }
+
+    expect(mockEventPublisher.publish).toHaveBeenCalledWith(
+      'payment.failed',
+      expect.objectContaining({
+        paymentId: testPayment.id,
+        orderId: testPayment.orderId,
+        error: 'Gateway timeout',
+        amount: testPayment.amount,
+      })
+    );
+  });
+
+  it('should update payment status to FAILED on error', async () => {
+    const gatewayError = new Error('Gateway timeout');
+    mockPaymentGateway.charge = vi.fn().mockRejectedValue(gatewayError);
+
+    try {
+      await processPaymentUseCase.execute(testPayment.id);
+    } catch (error) {
+      // Expected
+    }
+
+    expect(testPayment.status).toBe('FAILED');
   });
 });

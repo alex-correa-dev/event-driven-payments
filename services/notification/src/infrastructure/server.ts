@@ -15,7 +15,7 @@ async function main() {
 
   await consumer.start();
 
-  logger.info('Notification Service listening for events...');
+  logger.info('Notification Service listening for payment.processed and payment.failed events...');
 
   process.on('SIGINT', async () => {
     logger.info('Shutting down...');
