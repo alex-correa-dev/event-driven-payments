@@ -6,7 +6,7 @@ export class MockNotificationService implements NotificationService {
   async send(dto: SendNotificationDTO): Promise<Notification> {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const success = Math.random() < 0.8;
+    const success = Math.random() < 0.9;
 
     const notification: Notification = {
       id: crypto.randomUUID(),
@@ -21,13 +21,22 @@ export class MockNotificationService implements NotificationService {
 
     if (success) {
       logger.info(
-        { notificationId: notification.id, type: dto.type, email: dto.email },
-        'Notification sent'
+        {
+          notificationId: notification.id,
+          type: dto.type,
+          email: dto.email,
+          message: dto.message.substring(0, 50) + '...',
+        },
+        '✅ Notification sent successfully'
       );
     } else {
       logger.error(
-        { notificationId: notification.id, type: dto.type, email: dto.email },
-        'Notification failed'
+        {
+          notificationId: notification.id,
+          type: dto.type,
+          email: dto.email,
+        },
+        '❌ Notification failed to send'
       );
     }
 

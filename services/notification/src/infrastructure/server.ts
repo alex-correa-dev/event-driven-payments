@@ -20,10 +20,10 @@ interface PaymentEvent {
 }
 
 async function main() {
-  logger.info('Starting Notification Service...');
+  logger.info('🚀 Starting Notification Service...');
 
   const connection = await amqp.connect(config.rabbitmq.url);
-  logger.info('Connected to RabbitMQ');
+  logger.info('✅ Connected to RabbitMQ');
 
   const channel = await connection.createChannel();
 
@@ -39,50 +39,68 @@ async function main() {
     if (!msg) return;
 
     const content: PaymentEvent = JSON.parse(msg.content.toString());
-    logger.info({ eventName: content.eventName, orderId: content.data.orderId }, 'Received event');
+    const { orderId, customer, amount, error, transactionId } = content.data;
+
+    logger.info(
+      {
+        eventName: content.eventName,
+        orderId,
+        hasCustomer: !!customer,
+      },
+      '📨 Received event for notification'
+    );
 
     try {
-      const { orderId, customer, amount, error } = content.data;
-
       if (!customer) {
-        logger.warn({ orderId }, 'No customer data found');
+        logger.warn({ orderId }, '⚠️ No customer data found, skipping notification');
         channel.ack(msg);
         return;
       }
 
       if (content.eventName === 'payment.processed') {
+        logger.info({ orderId, transactionId, amount }, '💰 Sending payment success notification');
+
         await notificationService.send({
           userId: customer.email,
           email: customer.email,
           type: 'PAYMENT_PROCESSED',
-          message: `Seu pagamento para o pedido ${orderId} no valor de R$ ${amount} foi processado com sucesso!`,
+          message: `✅ Pagamento aprovado! Seu pedido ${orderId} foi processado com sucesso no valor de R$ ${amount?.toFixed(2)}. Transação: ${transactionId}`,
         });
       } else if (content.eventName === 'payment.failed') {
+        logger.warn({ orderId, error }, '⚠️ Sending payment failure notification');
+
         await notificationService.send({
           userId: customer.email,
           email: customer.email,
           type: 'PAYMENT_FAILED',
-          message: `Falha no pagamento do pedido ${orderId}. Motivo: ${error || 'Erro desconhecido'}`,
+          message: `❌ Falha no pagamento! Seu pedido ${orderId} não pôde ser processado. Motivo: ${error || 'Erro desconhecido'}. Entre em contato com o suporte.`,
         });
       }
 
       channel.ack(msg);
-    } catch (error) {
-      logger.error({ error }, 'Error processing notification');
+      logger.info(
+        { orderId, eventName: content.eventName },
+        '✅ Notification processed successfully'
+      );
+    } catch (err) {
+      logger.error({ error: err, orderId }, '❌ Error processing notification');
       channel.nack(msg, false, true);
     }
   });
 
-  logger.info(`Notification Service listening on ${config.rabbitmq.queue}...`);
+  logger.info(
+    `🎧 Notification Service listening on ${config.rabbitmq.queue} for payment.processed and payment.failed events`
+  );
+  logger.info('📧 Will send email notifications to customers');
 
   process.on('SIGINT', async () => {
-    logger.info('Shutting down...');
+    logger.info('🛑 Shutting down...');
     await connection.close();
     process.exit(0);
   });
 }
 
 main().catch((error) => {
-  logger.error({ error }, 'Fatal error');
+  logger.error({ error }, '💥 Fatal error');
   process.exit(1);
 });
