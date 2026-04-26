@@ -9,6 +9,15 @@ interface PaymentProcessedData {
   transactionId: string;
   paymentMethod: string;
   amount: number;
+  customer?: {
+    name: string;
+    email: string;
+  };
+  items?: Array<{
+    productName: string;
+    quantity: number;
+    price: number;
+  }>;
 }
 
 interface PaymentFailedData {
@@ -16,6 +25,10 @@ interface PaymentFailedData {
   orderId: string;
   error: string;
   amount: number;
+  customer?: {
+    name: string;
+    email: string;
+  };
 }
 
 export class ProcessPaymentUseCase {
@@ -25,7 +38,11 @@ export class ProcessPaymentUseCase {
     private eventPublisher: EventPublisher
   ) {}
 
-  async execute(paymentId: string): Promise<void> {
+  async execute(
+    paymentId: string,
+    customer?: { name: string; email: string },
+    items?: Array<{ productName: string; quantity: number; price: number }>
+  ): Promise<void> {
     logger.debug({ paymentId }, 'Processing payment');
 
     const payment = await this.paymentRepository.findById(paymentId);
@@ -66,6 +83,8 @@ export class ProcessPaymentUseCase {
         transactionId: result.transactionId,
         paymentMethod: result.method.type,
         amount: payment.amount,
+        customer,
+        items,
       };
       await this.eventPublisher.publish('payment.processed', eventData);
     } catch (error) {
@@ -93,6 +112,7 @@ export class ProcessPaymentUseCase {
         orderId: payment.orderId,
         error: errorMessage,
         amount: payment.amount,
+        customer,
       };
       await this.eventPublisher.publish('payment.failed', eventData);
 

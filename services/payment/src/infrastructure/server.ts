@@ -23,23 +23,9 @@ async function main() {
 
   await channel.assertExchange('payment.events', 'topic', { durable: true });
 
-  // Criar Dead Letter Exchange
-  await channel.assertExchange('payment.dlx', 'topic', { durable: true });
-
-  // Criar fila principal com DLQ
-  await channel.assertQueue('payment.queue', {
-    durable: true,
-    arguments: {
-      'x-dead-letter-exchange': 'payment.dlx',
-      'x-dead-letter-routing-key': 'payment.dead',
-    },
-  });
-
-  // Criar Dead Letter Queue
-  await channel.assertQueue('payment.dead-letter', { durable: true });
-  await channel.bindQueue('payment.dead-letter', 'payment.dlx', 'payment.dead');
-
-  await channel.bindQueue('payment.queue', 'payment.events', 'payment.create');
+  const queueName = 'payment.service.queue';
+  await channel.assertQueue(queueName, { durable: true });
+  await channel.bindQueue(queueName, 'payment.events', 'payment.create');
 
   const paymentRepository = new PostgresPaymentRepository(pgPool);
   const eventPublisher = new RabbitMQEventPublisher(rabbitConnection);
@@ -54,9 +40,7 @@ async function main() {
     eventPublisher
   );
 
-  const retryCount = new Map();
-
-  await channel.consume('payment.queue', async (msg) => {
+  await channel.consume(queueName, async (msg) => {
     if (!msg) return;
 
     const content = JSON.parse(msg.content.toString());
@@ -67,46 +51,19 @@ async function main() {
 
     try {
       if (content.eventName === 'payment.create') {
-        const payment = await createPaymentUseCase.execute(content.data);
-        await processPaymentUseCase.execute(payment.id);
+        const { orderId, amount, customer, items } = content.data;
+        const payment = await createPaymentUseCase.execute({ orderId, amount });
+        await processPaymentUseCase.execute(payment.id, customer, items);
       }
 
       channel.ack(msg);
-      retryCount.delete(msg.properties.messageId);
     } catch (error) {
-      const messageId = msg.properties.messageId || Math.random().toString();
-      const currentRetry = retryCount.get(messageId) || 0;
-      const maxRetries = 3;
-
-      if (currentRetry < maxRetries) {
-        retryCount.set(messageId, currentRetry + 1);
-        logger.warn(
-          {
-            retry: currentRetry + 1,
-            maxRetries,
-            orderId: content.data?.orderId,
-          },
-          'Retrying message'
-        );
-
-        channel.nack(msg, false, false);
-      } else {
-        logger.error(
-          {
-            orderId: content.data?.orderId,
-            error: error instanceof Error ? error.message : error,
-          },
-          'Max retries reached, sending to DLQ'
-        );
-
-        channel.publish('payment.dlx', 'payment.dead', msg.content, { persistent: true });
-        channel.ack(msg);
-        retryCount.delete(messageId);
-      }
+      logger.error({ error }, 'Error processing payment');
+      channel.nack(msg, false, true);
     }
   });
 
-  logger.info('Payment Service listening for payment.create events...');
+  logger.info(`Payment Service listening for payment.create events on queue: ${queueName}`);
 
   process.on('SIGINT', async () => {
     logger.info('Shutting down...');
