@@ -41,9 +41,9 @@ describe('InMemoryOrderRepository', () => {
 
   it('should update order status', async () => {
     const order = createTestOrder('ORD-123');
-    const originalUpdatedAt = order.updatedAt;
-
     await repository.save(order);
+
+    const originalUpdatedAt = order.updatedAt.getTime();
 
     await new Promise((resolve) => setTimeout(resolve, 10));
 
@@ -51,7 +51,7 @@ describe('InMemoryOrderRepository', () => {
     const updated = await repository.findByOrderId('ORD-123');
 
     expect(updated?.status).toBe('PAYMENT_COMPLETED');
-    expect(updated?.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt.getTime());
+    expect(updated?.updatedAt.getTime()).toBeGreaterThan(originalUpdatedAt);
   });
 
   it('should not fail updating non-existent order', async () => {
