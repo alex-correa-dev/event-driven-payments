@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+*.js
+*.d.ts
+scripts/*.js
+services/*/dist/
+services/*/node_modules/
+scripts-dist/
+infra/
+data/
+volumes/

@@ -1,0 +1,33 @@
+{
+  "name": "event-driven-payments",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "services/*"
+  ],
+  "scripts": {
+    "dev:payment": "npm run dev --workspace=payment",
+    "dev:order": "npm run dev --workspace=order",
+    "dev:inventory": "npm run dev --workspace=inventory",
+    "dev:notification": "npm run dev --workspace=notification",
+    "dev:invoice": "npm run dev --workspace=invoice",
+    "test": "npm run test --workspaces",
+    "build": "npm run build --workspaces",
+    "lint": "eslint . --ext .ts --fix",
+    "lint:check": "eslint . --ext .ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^6.14.0",
+    "@typescript-eslint/parser": "^6.14.0",
+    "eslint": "^8.55.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-prettier": "^5.0.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.1.1",
+    "typescript": "^5.3.0"
+  }
+}
