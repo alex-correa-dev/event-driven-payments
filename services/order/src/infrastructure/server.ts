@@ -13,22 +13,18 @@ const RABBITMQ_URL = 'amqp://admin:admin123@localhost:5672';
 async function main() {
   logger.info('Starting Order Service...');
 
-  // 1. Setup repositories e use cases
   const orderRepository = new InMemoryOrderRepository();
   const orderOrchestrator = new OrderOrchestrator(orderRepository);
 
-  // 2. Setup RabbitMQ
   const rabbitConnection = await amqp.connect(RABBITMQ_URL);
   logger.info('Connected to RabbitMQ');
 
   const channel = await rabbitConnection.createChannel();
   await channel.assertExchange(EXCHANGE, 'topic', { durable: true });
 
-  // 3. Setup event consumer
   const eventConsumer = new OrderEventConsumer(rabbitConnection, orderOrchestrator);
   await eventConsumer.start();
 
-  // 4. Setup HTTP server com controllers e rotas
   const orderController = new OrderController(orderOrchestrator, channel);
   const orderRoutes = new OrderRoutes(orderController);
 
