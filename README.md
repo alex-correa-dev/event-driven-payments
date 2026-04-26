@@ -133,25 +133,28 @@ Invoice Service                       Order Service
 ## 📁 Estrutura do Projeto
 
 ```text
-event-driven-payments/
-├── services/
-│ ├── order/ # Order Service (orquestrador)
-│ │ ├── src/
-│ │ │ ├── application/ # Use cases
-│ │ │ ├── domain/ # Entities, interfaces
-│ │ │ └── infrastructure/# Repositories, API, consumer
-│ │ └── tests/ # Testes unitários
-│ ├── payment/ # Payment Service
-│ ├── inventory/ # Inventory Service
-│ ├── notification/ # Notification Service
-│ └── invoice/ # Invoice Service
-├── infra/
-│ ├── postgres/ # Configuração do banco
-│ ├── prometheus/ # Métricas
-│ └── rabbitmq/ # Configuração do broker
-├── scripts/ # Scripts de inicialização e teste
-├── docker-compose.yml # Orquestração dos containers
-└── README.md
+services/order/
+├── src/
+│   ├── application/
+│   │   └── services/
+│   │       └── OrderOrchestrator.ts
+│   ├── domain/
+│   │   ├── types.ts
+│   │   └── interfaces/
+│   │       └── OrderRepository.ts
+│   └── infrastructure/
+│       ├── server.ts              # Entry point
+│       ├── config/
+│       ├── logger/
+│       ├── repositories/
+│       │   └── InMemoryOrderRepository.ts
+│       ├── messaging/
+│       │   └── OrderEventConsumer.ts
+│       └── web/
+│           ├── controllers/
+│           │   └── OrderController.ts
+│           └── routes/
+│               └── orderRoutes.ts
 ```
 
 ## 🚀 Como Executar
