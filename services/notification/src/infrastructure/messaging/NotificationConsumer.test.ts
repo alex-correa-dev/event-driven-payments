@@ -123,7 +123,6 @@ describe('NotificationConsumer', () => {
           email: 'cliente@test.com',
           name: 'Cliente Teste',
         },
-        status: 'COMPLETED',
       },
       timestamp: new Date().toISOString(),
     };
@@ -186,7 +185,7 @@ describe('NotificationConsumer', () => {
     expect(mockChannel.ack).toHaveBeenCalled();
   });
 
-  it('should nack message on error', async () => {
+  it('should nack message with requeue true on error', async () => {
     await consumer.start();
     mockNotificationService.send = vi.fn().mockRejectedValue(new Error('Service failed'));
 
@@ -205,7 +204,7 @@ describe('NotificationConsumer', () => {
     const msg = createMessage(event);
     await capturedCallback!(msg);
 
-    expect(mockChannel.nack).toHaveBeenCalledWith(msg, false, false);
+    expect(mockChannel.nack).toHaveBeenCalledWith(msg, false, true);
   });
 
   it('should ignore unknown events', async () => {
