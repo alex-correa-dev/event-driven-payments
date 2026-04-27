@@ -8,29 +8,21 @@ import { RabbitMQEventPublisher } from './messaging/RabbitMQEventPublisher';
 import { MockPaymentGateway } from './gateways/MockPaymentGateway';
 import { CreatePaymentUseCase } from '../application/useCases/CreatePaymentUseCase';
 import { ProcessPaymentUseCase } from '../application/useCases/ProcessPaymentUseCase';
+import { PaymentConsumer } from './messaging/PaymentConsumer';
 
 async function main() {
-  logger.info('Starting Payment Service...');
+  logger.info('🚀 Starting Payment Service...');
 
   const pgPool = new Pool(config.postgres);
   await pgPool.connect();
-  logger.info('Connected to PostgreSQL');
+  logger.info('✅ Connected to PostgreSQL');
 
   const rabbitConnection = await amqp.connect(config.rabbitmq.url);
-  logger.info('Connected to RabbitMQ');
-
-  const channel = await rabbitConnection.createChannel();
-
-  await channel.assertExchange('payment.events', 'topic', { durable: true });
-
-  const queueName = 'payment.service.queue';
-  await channel.assertQueue(queueName, { durable: true });
-  await channel.bindQueue(queueName, 'payment.events', 'payment.create');
+  logger.info('✅ Connected to RabbitMQ');
 
   const paymentRepository = new PostgresPaymentRepository(pgPool);
   const eventPublisher = new RabbitMQEventPublisher(rabbitConnection);
   const paymentGateway = new MockPaymentGateway();
-
   await eventPublisher.connect();
 
   const createPaymentUseCase = new CreatePaymentUseCase(paymentRepository, eventPublisher);
@@ -40,34 +32,18 @@ async function main() {
     eventPublisher
   );
 
-  await channel.consume(queueName, async (msg) => {
-    if (!msg) return;
+  const consumer = new PaymentConsumer(
+    rabbitConnection,
+    createPaymentUseCase,
+    processPaymentUseCase
+  );
+  await consumer.start();
 
-    const content = JSON.parse(msg.content.toString());
-    logger.info(
-      { eventName: content.eventName, orderId: content.data?.orderId },
-      'Received payment event'
-    );
-
-    try {
-      if (content.eventName === 'payment.create') {
-        const { orderId, amount, customer, items } = content.data;
-        const payment = await createPaymentUseCase.execute({ orderId, amount });
-        await processPaymentUseCase.execute(payment.id, customer, items);
-      }
-
-      channel.ack(msg);
-    } catch (error) {
-      logger.error({ error }, 'Error processing payment');
-      channel.nack(msg, false, true);
-    }
-  });
-
-  logger.info(`Payment Service listening for payment.create events on queue: ${queueName}`);
+  logger.info('🎧 Payment Service ready and listening for events');
 
   process.on('SIGINT', async () => {
-    logger.info('Shutting down...');
-    await channel.close();
+    logger.info('🛑 Shutting down...');
+    await consumer.stop();
     await rabbitConnection.close();
     await pgPool.end();
     process.exit(0);
@@ -75,6 +51,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  logger.error({ error }, 'Fatal error');
+  logger.error({ error }, '💥 Fatal error');
   process.exit(1);
 });
